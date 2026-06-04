@@ -1,0 +1,38 @@
+title: "言語処理系入門"
+author: "ligarb AI"
+language: "ja"
+ai_generated: true
+bibliography: references.bib
+chapters:
+  - cover: cover.md
+  - part: part-intro.md
+    chapters:
+      - introduction.md
+  - part: part-basics.md
+    chapters:
+      - language-design.md
+      - parsing.md
+      - semantic-analysis.md
+      - ast-interpreter.md
+      - virtual-machine.md
+  - part: part-advanced.md
+    chapters:
+      - values-and-containers.md
+      - memory-management.md
+      - io-and-extension.md
+      - exceptions.md
+      - closures.md
+      - concurrency.md
+  - part: part-performance.md
+    chapters:
+      - vm-optimization.md
+      - general-optimization.md
+      - jit-aot.md
+  - appendix:
+    - glossary.md
+    - further-reading.md
+
+github_review:
+  enabled: true
+
+repository: "https://github.com/kolanglab/book_langimpl_intro"
