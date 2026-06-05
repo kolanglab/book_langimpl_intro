@@ -2,7 +2,7 @@
 
 ついに、手に入れた AST を**実行**します。最初の実行方式は、考え方がいちばん素直なもの ── **木を根から再帰的にたどりながら、その場で計算していく**方式です。これを **AST walking interpreter**（木をたどるインタプリタ）と呼びます。バイトコードへの変換もコード生成もありません。木のノードを見て、「これは足し算だから左と右を計算して足す」「これは `if` だから条件を見て分岐する」と、ノードの種類ごとに処理を分けていくだけです。
 
-この章では、前章までに定義した配列表現の AST を入力に、MiniRuby を完全に動かすインタプリタを Ruby で実装します。短いコードで本当に動く処理系ができあがるので、ぜひ手元で動かしてください。
+この章では、前章までに定義した配列表現の AST を入力に、MiniRuby を完全に動かすインタプリタを Ruby で実装します。次章の仮想マシンと同じ順番 ── **四則演算と画面出力 → 変数 → 関数** ── でインタプリタを少しずつ育て、各節では新しく扱えるようになるノードを最初に示します。短いコードで本当に動く処理系ができあがるので、ぜひ手元で動かしてください。
 
 ## 基本のアイデア ── 評価とは木をたどること
 
@@ -26,9 +26,90 @@ graph TD
 
 葉（`[:int, n]`）はそのまま値を返し、内側のノードは子の値を組み合わせて値を返す ── 値が葉から根へと「染み上がってくる」イメージです。
 
-## 変数をどう持つか ── 環境
+## 四則演算と print ── まず式を計算する
 
-数値計算だけなら上の話で済みますが、MiniRuby には変数があります。`x = 10` のあとに `x + 1` を評価したら `11` になってほしい。そのためには「変数名 → 現在の値」の対応表を、評価の間ずっと持ち歩く必要があります。この対応表を **環境（environment）** と呼びます。Ruby ではハッシュで素直に表せます。
+いきなり全部を作ると迷子になります。そこで、前章の VM と同じ順番で、**いちばん小さいインタプリタ**から始め、節を追うごとに扱えるノードを少しずつ増やしていきましょう。最初は変数も関数もない、**四則演算と画面出力だけ**です。`1 + 2 * 3` を計算して表示できれば成功です。
+
+### この節で扱うノード
+
+| ノード | 意味 |
+|------|------|
+| `[:int, n]` | 整数 `n`（葉） |
+| `[:add, 左, 右]` `[:sub, …]` `[:mul, …]` `[:div, …]` | 上 2 つを再帰評価して演算する |
+| `[:print, 式]` | 式を評価して画面に出す |
+
+### 式を評価する
+
+まずインタプリタの中心、式を評価する `eval` です。`eval` は「式（AST のノード）を受け取り、その値を返す」関数でした。木の構造に沿って再帰します。
+
+```ruby
+class Interpreter
+  # 式 node を評価し、値（整数）を返す
+  def eval(node)
+    case node[0]
+    when :int then node[1]                  # [:int, 3] → 3
+    when :add then eval(node[1]) + eval(node[2])
+    when :sub then eval(node[1]) - eval(node[2])
+    when :mul then eval(node[1]) * eval(node[2])
+    when :div then eval(node[1]) / eval(node[2])
+    else
+      raise "未知のノード: #{node.inspect}"
+    end
+  end
+end
+```
+
+`case node[0]` で**ノードの種類**を見て分岐し、`:add` なら左右を再帰評価して足す ── 先ほどの図がそのままコードになっています。葉 `[:int, n]` はそのまま値を返し、内側のノードは子の値を組み合わせて返します。
+
+### 文を実行して表示する
+
+式が評価できたら、その結果を画面に出したくなります。「画面に出す」のは値を求める計算ではなく**動作**なので、**文**として扱います。文の並びを順に実行する入口 `run` と、各文を実行する `eval_stmt` を用意し、ここではまず `:print` 文だけを置きます。
+
+```ruby
+class Interpreter
+  # 文の並び stmts を順に実行する
+  def run(stmts)
+    stmts.each { |stmt| eval_stmt(stmt) }
+  end
+
+  def eval_stmt(node)
+    case node[0]
+    when :print then puts eval(node[1])     # 式を評価して表示
+    else eval(node)                          # それ以外は式として評価
+    end
+  end
+end
+```
+
+つないで動かしてみましょう。
+
+```ruby
+# print(1 + 2 * 3)
+program = [[:print, [:add, [:int, 1], [:mul, [:int, 2], [:int, 3]]]]]
+Interpreter.new.run(program)   # => 7 と表示される
+```
+
+掛け算が先に計算されるのは、パーサが優先順位を解決して `[:add, [:int, 1], [:mul, [:int, 2], [:int, 3]]]` という形の木を作ってくれているからです。`eval` は木の形に素直に従うだけで、優先順位を気にする必要はありません。
+
+数十行で、最初のインタプリタが動きました。ここからノードを足していきます。なお `:print` は、いまは専用の文で済ませますが、関数の節で `puts` という組み込み**関数**に作り直し、専用ノードとしては姿を消します（前章の `print` 命令とまったく同じ道筋です）。
+
+## 変数が使える ── 環境
+
+四則演算インタプリタは式を 1 つ計算するだけでした。本物のプログラムは、計算した値を**変数に覚え**、条件によって**流れを変え**ます。この節ではその 2 つ ── 変数と分岐 ── を足します。
+
+### この節で扱うノード
+
+| ノード | 意味 |
+|------|------|
+| `[:var, name]` | 変数の値を読む |
+| `[:assign, name, 式]` | 変数に代入する |
+| `[:lt, 左, 右]` `[:gt, …]` `[:eq, …]` | 比較（成り立てば `1`、なければ `0`） |
+| `[:if, 条件, then文, else文]` | 条件分岐 |
+| `[:while, 条件, 本体]` | 繰り返し |
+
+### 変数をどう持つか ── 環境
+
+`x = 10` のあとに `x + 1` を評価したら `11` になってほしい。そのためには「変数名 → 現在の値」の対応表を、評価の間ずっと持ち歩く必要があります。この対応表を **環境（environment）** と呼びます。Ruby ではハッシュで素直に表せます。
 
 ```ruby
 env = {}            # 最初は空
@@ -36,28 +117,22 @@ env["x"] = 10       # x = 10 を実行すると…
 env["x"] + 1        # x + 1 は 11
 ```
 
-前章のスコープ規則を思い出してください ── 「ローカル変数は関数の中だけで有効」でした。これを実現するには、**関数を呼ぶたびに新しい環境を作り、その関数の引数とローカル変数だけをそこに入れる**ようにします。関数を抜ければその環境は捨てられ、呼び出し元の環境には影響しません。こうして各関数呼び出しが独立した変数の置き場所を持ち、再帰も正しく動くようになります。
+そこで、`eval` と `eval_stmt` に**環境 `env` を引数として渡す**よう改めます。前節の `eval(node)` が `eval(node, env)` になる、という変化です（前章で VM に `@locals` が増えたのと同じ役割です）。
 
-## 実装する ── 式の評価
+### 式に変数と比較を足す
 
-それでは実装に入ります。まずインタプリタの骨格と、式の評価から書きましょう。
+`eval` に、変数の読み出し `:var` と比較 `:lt`/`:gt`/`:eq` を加えます。
 
 ```ruby
-class Interpreter
-  def initialize
-    @functions = {}   # 関数名 => [引数名の配列, 本体の文の配列]
-  end
-
   # 式 node を環境 env のもとで評価し、値（整数）を返す
   def eval(node, env)
     case node[0]
-    when :int
-      node[1]                                   # [:int, 3] → 3
+    when :int then node[1]
 
     when :var
       name = node[1]
       raise "未定義の変数: #{name}" unless env.key?(name)
-      env[name]                                 # 環境から値を取り出す
+      env[name]                               # 環境から値を取り出す
 
     when :add then eval(node[1], env) + eval(node[2], env)
     when :sub then eval(node[1], env) - eval(node[2], env)
@@ -69,24 +144,19 @@ class Interpreter
     when :gt then eval(node[1], env) >  eval(node[2], env) ? 1 : 0
     when :eq then eval(node[1], env) == eval(node[2], env) ? 1 : 0
 
-    when :call
-      eval_call(node, env)                      # 関数呼び出しは後述
-
     else
       raise "未知のノード: #{node.inspect}"
     end
   end
-end
 ```
 
-`case node[0]` で**ノードの種類**を見て分岐し、`:add` なら左右を再帰評価して足す ── 先ほどの図がそのままコードになっています。比較演算が三項演算子 `... ? 1 : 0` で整数を返しているのは、前章で「真偽は整数で表す」と決めたからです。これで `if` の条件として使えます。
+比較が三項演算子 `... ? 1 : 0` で整数を返すのは、前章で「真偽は整数で表す（`0` は偽、それ以外は真）」と決めたからです。これで `if` や `while` の条件として使えます。
 
-## 文の実行と環境の更新
+### 文に代入と分岐を足す
 
-式の次は文です。文は値そのものより**動作**（変数を書き換える、画面に出すなど）が目的でした。文の並びを順に実行し、最後の式の値を返す関数を書きます。
+`eval_stmt` に、代入 `:assign`、条件分岐 `:if`、繰り返し `:while` を足します。文の並びは、最後の文の値を返すようにしておきます（あとで関数の戻り値に使います）。
 
 ```ruby
-class Interpreter
   # 文の並び stmts を順に実行し、最後の文の値を返す
   def eval_stmts(stmts, env)
     result = nil
@@ -98,30 +168,87 @@ class Interpreter
     case node[0]
     when :assign
       name, expr = node[1], node[2]
-      env[name] = eval(expr, env)               # 変数に値を入れる
+      env[name] = eval(expr, env)             # 変数に値を入れる
     when :if
       _, cond, then_body, else_body = node
-      if eval(cond, env) != 0                   # 0 でなければ真
+      if eval(cond, env) != 0                 # 0 でなければ真
         eval_stmts(then_body, env)
       else
         eval_stmts(else_body || [], env)
       end
-    when :def
-      _, name, params, body = node
-      @functions[name] = [params, body]         # 関数を登録するだけ
+    when :while
+      _, cond, body = node
+      eval_stmts(body, env) while eval(cond, env) != 0
       nil
+    when :print then puts eval(node[1], env)  # （関数の節で puts に置き換える）
     else
-      eval(node, env)                           # それ以外は式として評価
+      eval(node, env)                          # それ以外は式として評価
     end
   end
+```
+
+**代入**は環境のハッシュに値を入れるだけです。前章で「変数は初めて代入したときに作られる」と決めたので、宣言の手続きは要りません。**`if`** は条件を評価し、`0` でなければ then 側、そうでなければ else 側を実行します（`else` がなければ空配列＝何もしない）。**`while`** は、条件が成り立つあいだ本体を繰り返すだけ ── ホスト言語 Ruby の `while` にそのまま乗せています。
+
+`while` で階乗（`1 × 2 × … × 5 = 120`）を計算してみましょう。
+
+```ruby
+# i = 1; result = 1
+# while i < 6 do result = result * i; i = i + 1 end
+program = [
+  [:assign, "i",      [:int, 1]],
+  [:assign, "result", [:int, 1]],
+  [:while, [:lt, [:var, "i"], [:int, 6]], [
+    [:assign, "result", [:mul, [:var, "result"], [:var, "i"]]],
+    [:assign, "i",      [:add, [:var, "i"], [:int, 1]]],
+  ]],
+  [:print, [:var, "result"]],
+]
+Interpreter.new.run(program)   # => 120 と表示される
+```
+
+（トップレベルの `run` も環境を渡すよう `eval_stmts(program, {})` に変わります ── 完成形は最後のまとめに載せます。）変数と分岐がそろい、ようやく「プログラムらしいプログラム」が動くようになりました。残るは関数です。
+
+## 関数が使える ── 新しい環境を作る
+
+最後の拡張は**関数**です。関数を呼ぶと、呼ぶ側と呼ばれる側で別々の変数が要ります。`fib` が `fib` を呼べば、両者の `n` は違う値だからです。ここで「呼び出しごとに新しい環境を作る」という環境の設計が効いてきます。
+
+### この節で扱うノード
+
+| ノード | 意味 |
+|------|------|
+| `[:def, name, params, body]` | 関数を定義（登録）する |
+| `[:call, name, 引数の配列]` | 関数を呼ぶ（`puts` は組み込み） |
+
+前章のスコープ規則を思い出してください ── 「ローカル変数は関数の中だけで有効」でした。これを実現するには、**関数を呼ぶたびに新しい環境を作り、その関数の引数とローカル変数だけをそこに入れる**ようにします。関数を抜ければその環境は捨てられ、呼び出し元の環境には影響しません。こうして各関数呼び出しが独立した変数の置き場所を持ち、再帰も正しく動くようになります。
+
+### 関数を登録する ── `def`
+
+まず関数定義 `:def` です。`def` は、ここでは関数を**登録するだけ**で、本体は実行しません。本体が実行されるのは、その関数が**呼び出されたとき**です。登録先として、インタプリタに「関数名 → 中身」の表 `@functions` を持たせ、`eval_stmt` に `:def` を 1 本足します。
+
+```ruby
+class Interpreter
+  def initialize
+    @functions = {}   # 関数名 => [引数名の配列, 本体の文の配列]
+  end
+
+  # eval_stmt の case に 1 本追加：
+  #   when :def
+  #     _, name, params, body = node
+  #     @functions[name] = [params, body]   # 関数を登録するだけ
+  #     nil
 end
 ```
 
-ポイントを 3 つ。**代入**は環境のハッシュに値を入れるだけです。前章で「変数は初めて代入したときに作られる」と決めたので、宣言の手続きは要りません。**`if`** は条件を評価し、`0` でなければ then 側、そうでなければ else 側の文の並びを実行します（`else` がなければ空配列を実行＝何もしない）。**`def`** は、ここでは関数を**登録するだけ**で、本体は実行しません。本体が実行されるのは、その関数が**呼び出されたとき**です。
+### 関数を呼ぶ ── `call`
 
-## 関数呼び出し ── 新しい環境を作る
+呼び出し式 `[:call, name, 引数]` は、`eval` の `case` に 1 本足して `eval_call` に渡します。
 
-いよいよ山場、関数呼び出しです。ここで「呼び出しごとに新しい環境を作る」という設計が効いてきます。
+```ruby
+  # eval の case に 1 本追加：
+  #   when :call then eval_call(node, env)
+```
+
+その実体が `eval_call` です。
 
 ```ruby
 class Interpreter
@@ -157,6 +284,8 @@ class Interpreter
 end
 ```
 
+`puts` を**組み込み関数**として `eval_call` の中で特別扱いしている点に注目してください。前節まで専用文だった `:print` は、ここで役目を終えます。これからは `puts(式)`、すなわち `[:call, "puts", [式]]` という関数呼び出しで画面に出します（前章で `print` 命令が `puts` 関数に置き換わったのと同じ流れです）。
+
 この関数の急所は **`new_env = {}`** の一行です。関数本体は、呼び出し元の `env` ではなく、**まっさらな `new_env`** のもとで実行されます。だから関数の中で変数をいじっても呼び出し元には漏れず、逆に呼び出し元の変数も（同名でも）関数からは見えません ── 前章で決めたスコープ規則そのものです。
 
 引数の値を **呼び出し元の `env` で先に評価してから** `new_env` に移している点にも注目してください。`add(x + 1, y)` の `x` や `y` は、呼び出し**元**の変数だからです。
@@ -166,9 +295,9 @@ end
 > [!NOTE]
 > 本書のインタプリタは、MiniRuby の関数呼び出しを「ホスト言語 Ruby の `eval` 再帰呼び出し」で実現しています。つまり MiniRuby の呼び出しスタックは Ruby の呼び出しスタックに相乗りしています。そのため、MiniRuby で深い再帰をすると Ruby 側がスタックオーバーフローを起こします。スタックを自前で管理して相乗りをやめる方法は、次章の仮想マシンで見えてきます。
 
-## 全体を組み立てて動かす
+### 全体を組み立てて動かす
 
-最後に、プログラム全体（トップレベルの文の並び）を実行する入口を用意します。トップレベルにもひとつ環境を与えれば完成です。
+最後に、プログラム全体（トップレベルの文の並び）を実行する入口 `run` を、環境を渡す形に仕上げます。トップレベルにもひとつ環境を与えれば完成です。
 
 ```ruby
 class Interpreter
@@ -199,6 +328,117 @@ Interpreter.new.run(ast)
 ```
 
 `55` が表示されれば成功です。**字句解析・構文解析・実行までを通した、正真正銘の処理系**が、ここに完成しました。たった 100 行ほどのコードで、再帰関数を含む小さな言語が動いています。これが「木をたどるインタプリタ」の威力です。
+
+## ノード一覧と実装のまとめ
+
+三段階で扱えるようにしてきたノードを、ここで一覧にまとめます。まず、MiniRuby インタプリタが**扱うノードの全体像**です。
+
+| ノード | 意味 | 加わった節 |
+|------|------|------|
+| `[:int, n]` | 整数 `n`（葉） | 四則演算 |
+| `[:add, 左, 右]` `[:sub, …]` `[:mul, …]` `[:div, …]` | 上 2 つを再帰評価して演算する | 四則演算 |
+| `[:var, name]` | 変数の値を読む | 変数 |
+| `[:assign, name, 式]` | 変数に代入する | 変数 |
+| `[:lt, 左, 右]` `[:gt, …]` `[:eq, …]` | 比較し `1`/`0` を返す | 変数 |
+| `[:if, 条件, then文, else文]` | 条件分岐 | 変数 |
+| `[:while, 条件, 本体]` | 繰り返し | 変数 |
+| `[:def, name, params, body]` | 関数を定義（登録）する | 関数 |
+| `[:call, name, 引数の配列]` | 関数を呼ぶ（`puts` は組み込み） | 関数 |
+
+`:print` は四則演算の節で導入しましたが、関数の節で組み込み関数 `puts`（`[:call, "puts", …]`）に置き換わったので、最終的なノードには含まれていません。前章の VM で `print` 命令が消えたのと同じです。
+
+### 完成したインタプリタ
+
+節ごとに足してきた `eval`・`eval_stmt`・`eval_call` を 1 つにまとめると、インタプリタの全体はこうなります。`eval` に渡す `env`（環境）と、関数表 `@functions` が、この処理系を支える 2 本の柱です。
+
+```ruby
+class Interpreter
+  def initialize
+    @functions = {}   # 関数名 => [引数名の配列, 本体の文の配列]
+  end
+
+  # プログラム（トップレベルの文の並び）を実行する
+  def run(program)
+    eval_stmts(program, {})   # トップレベルの環境は空ハッシュから
+  end
+
+  # 文の並び stmts を順に実行し、最後の文の値を返す
+  def eval_stmts(stmts, env)
+    result = nil
+    stmts.each { |stmt| result = eval_stmt(stmt, env) }
+    result
+  end
+
+  def eval_stmt(node, env)
+    case node[0]
+    when :assign
+      name, expr = node[1], node[2]
+      env[name] = eval(expr, env)               # 変数に値を入れる
+    when :if
+      _, cond, then_body, else_body = node
+      if eval(cond, env) != 0                   # 0 でなければ真
+        eval_stmts(then_body, env)
+      else
+        eval_stmts(else_body || [], env)
+      end
+    when :while
+      _, cond, body = node
+      eval_stmts(body, env) while eval(cond, env) != 0
+      nil
+    when :def
+      _, name, params, body = node
+      @functions[name] = [params, body]         # 関数を登録するだけ
+      nil
+    else
+      eval(node, env)                           # それ以外は式として評価
+    end
+  end
+
+  # 式 node を環境 env のもとで評価し、値（整数）を返す
+  def eval(node, env)
+    case node[0]
+    when :int then node[1]                      # [:int, 3] → 3
+    when :var
+      name = node[1]
+      raise "未定義の変数: #{name}" unless env.key?(name)
+      env[name]                                 # 環境から値を取り出す
+    when :add then eval(node[1], env) + eval(node[2], env)
+    when :sub then eval(node[1], env) - eval(node[2], env)
+    when :mul then eval(node[1], env) * eval(node[2], env)
+    when :div then eval(node[1], env) / eval(node[2], env)
+    when :lt then eval(node[1], env) <  eval(node[2], env) ? 1 : 0
+    when :gt then eval(node[1], env) >  eval(node[2], env) ? 1 : 0
+    when :eq then eval(node[1], env) == eval(node[2], env) ? 1 : 0
+    when :call then eval_call(node, env)        # 関数呼び出し
+    else
+      raise "未知のノード: #{node.inspect}"
+    end
+  end
+
+  def eval_call(node, env)
+    _, name, arg_exprs = node
+
+    if name == "puts"                           # 組み込み関数
+      value = eval(arg_exprs[0], env)
+      puts value
+      return value
+    end
+
+    params, body = @functions[name]
+    raise "未定義の関数: #{name}" unless params
+    if params.size != arg_exprs.size
+      raise "引数の個数が違います: #{name}"
+    end
+
+    arg_values = arg_exprs.map { |e| eval(e, env) }   # 引数は呼び出し元の env で評価
+    new_env = {}                                       # 関数本体のための新しい環境
+    params.each_with_index { |param, i| new_env[param] = arg_values[i] }
+    eval_stmts(body, new_env)                          # 最後の文の値が戻り値
+  end
+end
+```
+
+四則演算の数十行から始めて、変数・関数と足していくと、この 1 枚にたどり着きます。**どの行も、いつ・なぜ足したのかを説明できる** ── それがこの章を順に組み上げてきたねらいでした。次章では、まったく同じノードの並びを、今度は VM の命令列としてコンパイルし直していきます。
 
 ## AST インタプリタの長所と短所
 
