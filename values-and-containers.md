@@ -61,6 +61,28 @@ graph TD
 (2 ** 100).class  # => Integer（内部表現は多倍長 Bignum へ昇格済み）
 ```
 
+ホスト言語 Ruby はこの昇格を勝手にやってくれますが、**C などで自分で処理系を書くなら、加算命令のたびに「結果が即値の範囲に収まるか」を検査して昇格を判断**しなければなりません。`add` 命令の中身を Ruby で模すと、こうなります。
+
+```ruby
+# 1 ワード(64bit)のうち 1 ビットをタグに使う処理系を想定した即値の範囲
+FIXNUM_MAX =  (1 << 62) - 1
+FIXNUM_MIN = -(1 << 62)
+
+def vm_add(a, b)
+  r = a + b                              # まず素直に足す
+  if r > FIXNUM_MAX || r < FIXNUM_MIN
+    Bignum.from_integer(r)               # 範囲外 → ヒープ上の多倍長へ昇格
+  else
+    r                                    # 範囲内 → 即値(Fixnum)のまま
+  end
+end
+```
+
+本物の C 実装では、`a + b` の結果がオーバーフローしたかを「足す前に上限と比較する」か「CPU のオーバーフローフラグ（GCC の `__builtin_add_overflow` など）を見る」かして検出します。昇格先の `Bignum` は整数を「基数 `2^32` などの桁の配列」として持ち、加減乗除を筆算と同じ桁ごとの処理で行います。逆に、Bignum 同士の演算結果がまた即値の範囲に収まったら Fixnum へ降格させる実装もあります。
+
+> [!NOTE]
+> 本書の MiniRuby はホスト Ruby の `Integer` をそのまま使うため、この検査と昇格はホストが肩代わりしてくれます。上のコードは「もし自分で書くなら、即値の境界を自分で定義し、演算のたびに検査する必要がある」という実装の勘所を示すためのものです。
+
 整数の次は **実数の近似** です。`3.14` のような **浮動小数点数（Float）** は、ほぼすべての処理系が CPU の備える IEEE 754 倍精度をそのまま使います。高速な反面、`0.1 + 0.2` が `0.3` にならないことに代表される **丸め誤差** を避けられません。
 
 ```ruby
@@ -86,6 +108,43 @@ graph BT
 塔の下にいる型は、上にいる型へ「損なわずに」格上げできます。たとえば整数 `1` は有理数 `1/1` とみなせ、有理数は浮動小数点で近似できます。そこで `1 + 2.0` は、整数 `1` を `Float` の `1.0` に揃えてから足し、`3.0` を返します。`(1/3r) + 0.5` なら有理数を Float に落として計算します。逆に、上の型を下へ自動で落とすことは（情報が失われるため）しません。
 
 実装では、この昇格ルールを各数値クラスにどう持たせるかが設計の勘所です。Ruby は **coerce プロトコル** という仕組みを使います。`a + b` で `a` が相手 `b` の型を知らないとき、`a` は `b.coerce(a)` を呼んで「両辺を同じ型に揃えた組」を作ってもらい、その上で改めて加算します。こうすると、新しい数値型を後から追加しても、既存の演算子に手を入れずに塔へ組み込めます。
+
+具体的に、最小の有理数クラスを書いてみると coerce の流れが見えてきます。`+` は「相手の型を知っているか」で 3 つに分岐します。
+
+```ruby
+class MyRational
+  attr_reader :num, :den
+  def initialize(num, den)
+    @num, @den = num, den
+  end
+
+  def +(other)
+    case other
+    when MyRational              # 同じ型同士 → 通分して足す
+      MyRational.new(@num * other.den + other.num * @den, @den * other.den)
+    when Integer                 # 狭い型 → 自分の型へ引き上げてから足す
+      self + MyRational.new(other, 1)
+    else                         # 知らない型(Floatなど) → 相手に揃えてもらう
+      a, b = other.coerce(self)  # [揃えた相手, 揃えた自分] が返る
+      a + b                      # 改めて、揃った型同士で足す
+    end
+  end
+
+  # 「より広い型」側から self を足されたときに呼ばれ、両辺を揃えた組を返す
+  def coerce(other)
+    [other.to_f, @num.to_f / @den]   # 両辺を Float に落として揃える
+  end
+
+  def to_f = @num.to_f / @den
+end
+
+third = MyRational.new(1, 3)
+third + MyRational.new(1, 6)   # => MyRational(1/2)  … 同型分岐
+third + 1                      # => MyRational(4/3)  … Integer 分岐
+third + 0.5                    # => 0.8333...        … else 分岐(coerce 経由)
+```
+
+ポイントは、`MyRational` 自身は `Float` のことを一切知らないのに `third + 0.5` が動く点です。`+` は相手を知らないので `0.5.coerce(third)` を呼び、`Float#coerce` が `[third.to_f, 0.5]` を返してくれるので、あとは Float 同士の加算に帰着します。`1 + third`（左が `Integer`）のように左辺が相手を知らない場合は、逆に `Integer#+` が `third.coerce(1)` を呼び、上で定義した `MyRational#coerce` が両辺を Float に揃えます。このように **「広い側が変換を引き受ける」一つの約束** だけで、各型は自分より狭い型さえ知っていれば塔に参加でき、型を一つ増やしても既存の `+` を書き換えずに済みます。
 
 > [!TIP]
 > numeric tower は Scheme（R7RS）が明示的に規定したことで広く知られる概念で、Ruby の `Integer < Rational < Float < Complex` もこの発想に沿っています。「狭い型から広い型へ、必要なときだけ昇格する」という一本の原則が、`Fixnum→Bignum` の桁あふれ昇格と、`Integer+Float` の混在演算という別々に見える話を、ひとつの仕組みで貫いているのが面白いところです。
