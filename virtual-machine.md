@@ -47,13 +47,14 @@ graph LR
 
 ### この節の命令
 
-四則演算に要る命令はこれだけです。
+四則演算と、結果を画面に出すのに要る命令はこれだけです。
 
 | 命令 | 動作 |
 |------|------|
 | `[:push, n]` | 整数 `n` をスタックに積む |
 | `[:add]` `[:sub]` `[:mul]` `[:div]` | 上 2 つを取り出して演算し、結果を積む |
 | `[:pop]` | てっぺんを 1 つ捨てる |
+| `[:print]` | てっぺんを取り出して表示する |
 
 オペランド（命令にくっつくデータ）を持つのは `push` だけで、積む値 `n` を後ろに付けます。残りは引数なしで、暗黙に「スタックのてっぺん」を相手にします。
 
@@ -119,12 +120,13 @@ class VM
       instr = @code[@pc]   # PC の命令を取り出す
       @pc += 1             # PC を進める
       case instr[0]
-      when :push then @stack.push(instr[1])
-      when :pop  then @stack.pop
-      when :add  then b, a = @stack.pop, @stack.pop; @stack.push(a + b)
-      when :sub  then b, a = @stack.pop, @stack.pop; @stack.push(a - b)
-      when :mul  then b, a = @stack.pop, @stack.pop; @stack.push(a * b)
-      when :div  then b, a = @stack.pop, @stack.pop; @stack.push(a / b)
+      when :push  then @stack.push(instr[1])
+      when :pop   then @stack.pop
+      when :print then puts @stack.pop
+      when :add   then b, a = @stack.pop, @stack.pop; @stack.push(a + b)
+      when :sub   then b, a = @stack.pop, @stack.pop; @stack.push(a - b)
+      when :mul   then b, a = @stack.pop, @stack.pop; @stack.push(a * b)
+      when :div   then b, a = @stack.pop, @stack.pop; @stack.push(a / b)
       end
     end
     @stack.last   # 残ったてっぺんが式の値
@@ -141,6 +143,17 @@ c = Compiler.new
 c.compile_expr([:add, [:int, 1], [:mul, [:int, 2], [:int, 3]]])
 VM.new(c.code).run   # => 7
 ```
+
+`run` の戻り値で結果を受け取りましたが、`print` 命令を使えば VM 自身に表示させることもできます。コンパイルした命令列の末尾に `[:print]` を足すだけです。
+
+```ruby
+c = Compiler.new
+c.compile_expr([:add, [:int, 1], [:mul, [:int, 2], [:int, 3]]])
+c.emit(:print)        # 計算結果をてっぺんから取り出して表示
+VM.new(c.code).run    # 7 と表示される
+```
+
+これで、変数も関数もないこの最小の VM でも、計算した答えを画面に出せます。表示はひとまず専用命令 `print` で済ませますが、関数呼び出しの節で `puts` という組み込み**関数**に作り直し、`print` 命令は役目を終えます。
 
 たった数十行で、最初の VM が動きました。ここから命令を足していきます。
 
