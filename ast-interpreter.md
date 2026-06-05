@@ -61,22 +61,29 @@ end
 
 `case node[0]` で**ノードの種類**を見て分岐し、`:add` なら左右を再帰評価して足す ── 先ほどの図がそのままコードになっています。葉 `[:int, n]` はそのまま値を返し、内側のノードは子の値を組み合わせて返します。
 
-### 文を実行して表示する
+### print も式として足す
 
-式が評価できたら、その結果を画面に出したくなります。「画面に出す」のは値を求める計算ではなく**動作**なので、**文**として扱います。文の並びを順に実行する入口 `run` と、各文を実行する `eval_stmt` を用意し、ここではまず `:print` 文だけを置きます。
+式が評価できたら、その結果を画面に出したくなります。「画面に出す」`[:print, 式]` も、ひとつの**式**として `eval` に足してしまいましょう。式を評価し、その値を `puts` で画面に出すだけです。本書のインタプリタは「文」という別の種類を作らず、最後まで「式を評価して値を返す」という一本の枠組みだけで通します。
 
 ```ruby
 class Interpreter
-  # 文の並び stmts を順に実行する
-  def run(stmts)
-    stmts.each { |stmt| eval_stmt(stmt) }
+  # 式 node を評価し、値（整数）を返す
+  def eval(node)
+    case node[0]
+    when :int then node[1]
+    when :add then eval(node[1]) + eval(node[2])
+    when :sub then eval(node[1]) - eval(node[2])
+    when :mul then eval(node[1]) * eval(node[2])
+    when :div then eval(node[1]) / eval(node[2])
+    when :print then puts eval(node[1])     # 式を評価して画面に出す
+    else
+      raise "未知のノード: #{node.inspect}"
+    end
   end
 
-  def eval_stmt(node)
-    case node[0]
-    when :print then puts eval(node[1])     # 式を評価して表示
-    else eval(node)                          # それ以外は式として評価
-    end
+  # プログラム（式の並び）を順に評価する
+  def run(program)
+    program.each { |expr| eval(expr) }
   end
 end
 ```
@@ -91,7 +98,7 @@ Interpreter.new.run(program)   # => 7 と表示される
 
 掛け算が先に計算されるのは、パーサが優先順位を解決して `[:add, [:int, 1], [:mul, [:int, 2], [:int, 3]]]` という形の木を作ってくれているからです。`eval` は木の形に素直に従うだけで、優先順位を気にする必要はありません。
 
-数十行で、最初のインタプリタが動きました。ここからノードを足していきます。なお `:print` は、いまは専用の文で済ませますが、関数の節で `puts` という組み込み**関数**に作り直し、専用ノードとしては姿を消します（前章の `print` 命令とまったく同じ道筋です）。
+数十行で、最初のインタプリタが動きました。ここからノードを足していきます。なお `:print` は、いまは専用ノードで済ませますが、関数の節で `puts` という組み込み**関数**に作り直し、専用ノードとしては姿を消します（前章の `print` 命令とまったく同じ道筋です）。
 
 ## 変数が使える ── 環境
 
@@ -104,7 +111,7 @@ Interpreter.new.run(program)   # => 7 と表示される
 | `[:var, name]` | 変数の値を読む |
 | `[:assign, name, 式]` | 変数に代入する |
 | `[:lt, 左, 右]` `[:gt, …]` `[:eq, …]` | 比較（成り立てば `1`、なければ `0`） |
-| `[:if, 条件, then文, else文]` | 条件分岐 |
+| `[:if, 条件, then本体, else本体]` | 条件分岐 |
 | `[:while, 条件, 本体]` | 繰り返し |
 
 ### 変数をどう持つか ── 環境
@@ -117,7 +124,7 @@ env["x"] = 10       # x = 10 を実行すると…
 env["x"] + 1        # x + 1 は 11
 ```
 
-そこで、`eval` と `eval_stmt` に**環境 `env` を引数として渡す**よう改めます。前節の `eval(node)` が `eval(node, env)` になる、という変化です（前章で VM に `@locals` が増えたのと同じ役割です）。
+そこで、`eval` に**環境 `env` を引数として渡す**よう改めます。前節の `eval(node)` が `eval(node, env)` になる、という変化です（前章で VM に `@locals` が増えたのと同じ役割です）。
 
 ### 式に変数と比較を足す
 
@@ -152,37 +159,37 @@ env["x"] + 1        # x + 1 は 11
 
 比較が三項演算子 `... ? 1 : 0` で整数を返すのは、前章で「真偽は整数で表す（`0` は偽、それ以外は真）」と決めたからです。これで `if` や `while` の条件として使えます。
 
-### 文に代入と分岐を足す
+### 代入と分岐を足す
 
-`eval_stmt` に、代入 `:assign`、条件分岐 `:if`、繰り返し `:while` を足します。文の並びは、最後の文の値を返すようにしておきます（あとで関数の戻り値に使います）。
+`eval` に、代入 `:assign`、条件分岐 `:if`、繰り返し `:while` を足します。これらも「実行して値を返す式」として扱います。あわせて、式の並びを順に評価して**最後の式の値を返す** `eval_exprs` を用意します（あとで関数の戻り値に使います）。
 
 ```ruby
-  # 文の並び stmts を順に実行し、最後の文の値を返す
-  def eval_stmts(stmts, env)
+  # 式の並び exprs を順に評価し、最後の式の値を返す
+  def eval_exprs(exprs, env)
     result = nil
-    stmts.each { |stmt| result = eval_stmt(stmt, env) }
+    exprs.each { |expr| result = eval(expr, env) }
     result
   end
 
-  def eval_stmt(node, env)
+  # eval の case に、代入・分岐・繰り返しを足す
+  # （int・var・四則・比較は前掲のまま）
+  def eval(node, env)
     case node[0]
     when :assign
       name, expr = node[1], node[2]
-      env[name] = eval(expr, env)             # 変数に値を入れる
+      env[name] = eval(expr, env)             # 変数に値を入れ、その値を返す
     when :if
       _, cond, then_body, else_body = node
       if eval(cond, env) != 0                 # 0 でなければ真
-        eval_stmts(then_body, env)
+        eval_exprs(then_body, env)
       else
-        eval_stmts(else_body || [], env)
+        eval_exprs(else_body || [], env)
       end
     when :while
       _, cond, body = node
-      eval_stmts(body, env) while eval(cond, env) != 0
+      eval_exprs(body, env) while eval(cond, env) != 0
       nil
     when :print then puts eval(node[1], env)  # （関数の節で puts に置き換える）
-    else
-      eval(node, env)                          # それ以外は式として評価
     end
   end
 ```
@@ -206,7 +213,7 @@ program = [
 Interpreter.new.run(program)   # => 120 と表示される
 ```
 
-（トップレベルの `run` も環境を渡すよう `eval_stmts(program, {})` に変わります ── 完成形は最後のまとめに載せます。）変数と分岐がそろい、ようやく「プログラムらしいプログラム」が動くようになりました。残るは関数です。
+（トップレベルの `run` も環境を渡すよう `eval_exprs(program, {})` に変わります ── 完成形は最後のまとめに載せます。）変数と分岐がそろい、ようやく「プログラムらしいプログラム」が動くようになりました。残るは関数です。
 
 ## 関数が使える ── 新しい環境を作る
 
@@ -223,15 +230,15 @@ Interpreter.new.run(program)   # => 120 と表示される
 
 ### 関数を登録する ── `def`
 
-まず関数定義 `:def` です。`def` は、ここでは関数を**登録するだけ**で、本体は実行しません。本体が実行されるのは、その関数が**呼び出されたとき**です。登録先として、インタプリタに「関数名 → 中身」の表 `@functions` を持たせ、`eval_stmt` に `:def` を 1 本足します。
+まず関数定義 `:def` です。`def` は、ここでは関数を**登録するだけ**で、本体は実行しません。本体が実行されるのは、その関数が**呼び出されたとき**です。登録先として、インタプリタに「関数名 → 中身」の表 `@functions` を持たせ、`eval` に `:def` を 1 本足します。
 
 ```ruby
 class Interpreter
   def initialize
-    @functions = {}   # 関数名 => [引数名の配列, 本体の文の配列]
+    @functions = {}   # 関数名 => [引数名の配列, 本体の式の配列]
   end
 
-  # eval_stmt の case に 1 本追加：
+  # eval の case に 1 本追加：
   #   when :def
   #     _, name, params, body = node
   #     @functions[name] = [params, body]   # 関数を登録するだけ
@@ -278,13 +285,13 @@ class Interpreter
       new_env[param] = arg_values[i]
     end
 
-    # 新しい環境のもとで本体を実行。最後の文の値が戻り値
-    eval_stmts(body, new_env)
+    # 新しい環境のもとで本体を実行。最後の式の値が戻り値
+    eval_exprs(body, new_env)
   end
 end
 ```
 
-`puts` を**組み込み関数**として `eval_call` の中で特別扱いしている点に注目してください。前節まで専用文だった `:print` は、ここで役目を終えます。これからは `puts(式)`、すなわち `[:call, "puts", [式]]` という関数呼び出しで画面に出します（前章で `print` 命令が `puts` 関数に置き換わったのと同じ流れです）。
+`puts` を**組み込み関数**として `eval_call` の中で特別扱いしている点に注目してください。前節まで専用ノードだった `:print` は、ここで役目を終えます。これからは `puts(式)`、すなわち `[:call, "puts", [式]]` という関数呼び出しで画面に出します（前章で `print` 命令が `puts` 関数に置き換わったのと同じ流れです）。
 
 この関数の急所は **`new_env = {}`** の一行です。関数本体は、呼び出し元の `env` ではなく、**まっさらな `new_env`** のもとで実行されます。だから関数の中で変数をいじっても呼び出し元には漏れず、逆に呼び出し元の変数も（同名でも）関数からは見えません ── 前章で決めたスコープ規則そのものです。
 
@@ -302,7 +309,7 @@ end
 ```ruby
 class Interpreter
   def run(program)
-    eval_stmts(program, {})   # トップレベルの環境は空ハッシュから
+    eval_exprs(program, {})   # トップレベルの環境は空ハッシュから
   end
 end
 ```
@@ -340,7 +347,7 @@ Interpreter.new.run(ast)
 | `[:var, name]` | 変数の値を読む | 変数 |
 | `[:assign, name, 式]` | 変数に代入する | 変数 |
 | `[:lt, 左, 右]` `[:gt, …]` `[:eq, …]` | 比較し `1`/`0` を返す | 変数 |
-| `[:if, 条件, then文, else文]` | 条件分岐 | 変数 |
+| `[:if, 条件, then本体, else本体]` | 条件分岐 | 変数 |
 | `[:while, 条件, 本体]` | 繰り返し | 変数 |
 | `[:def, name, params, body]` | 関数を定義（登録）する | 関数 |
 | `[:call, name, 引数の配列]` | 関数を呼ぶ（`puts` は組み込み） | 関数 |
@@ -354,47 +361,22 @@ Interpreter.new.run(ast)
 ```ruby
 class Interpreter
   def initialize
-    @functions = {}   # 関数名 => [引数名の配列, 本体の文の配列]
+    @functions = {}   # 関数名 => [引数名の配列, 本体の式の配列]
   end
 
-  # プログラム（トップレベルの文の並び）を実行する
+  # プログラム（トップレベルの式の並び）を実行する
   def run(program)
-    eval_stmts(program, {})   # トップレベルの環境は空ハッシュから
+    eval_exprs(program, {})   # トップレベルの環境は空ハッシュから
   end
 
-  # 文の並び stmts を順に実行し、最後の文の値を返す
-  def eval_stmts(stmts, env)
+  # 式の並び exprs を順に評価し、最後の式の値を返す
+  def eval_exprs(exprs, env)
     result = nil
-    stmts.each { |stmt| result = eval_stmt(stmt, env) }
+    exprs.each { |expr| result = eval(expr, env) }
     result
   end
 
-  def eval_stmt(node, env)
-    case node[0]
-    when :assign
-      name, expr = node[1], node[2]
-      env[name] = eval(expr, env)               # 変数に値を入れる
-    when :if
-      _, cond, then_body, else_body = node
-      if eval(cond, env) != 0                   # 0 でなければ真
-        eval_stmts(then_body, env)
-      else
-        eval_stmts(else_body || [], env)
-      end
-    when :while
-      _, cond, body = node
-      eval_stmts(body, env) while eval(cond, env) != 0
-      nil
-    when :def
-      _, name, params, body = node
-      @functions[name] = [params, body]         # 関数を登録するだけ
-      nil
-    else
-      eval(node, env)                           # それ以外は式として評価
-    end
-  end
-
-  # 式 node を環境 env のもとで評価し、値（整数）を返す
+  # 式 node を環境 env のもとで評価し、値を返す
   def eval(node, env)
     case node[0]
     when :int then node[1]                      # [:int, 3] → 3
@@ -409,6 +391,24 @@ class Interpreter
     when :lt then eval(node[1], env) <  eval(node[2], env) ? 1 : 0
     when :gt then eval(node[1], env) >  eval(node[2], env) ? 1 : 0
     when :eq then eval(node[1], env) == eval(node[2], env) ? 1 : 0
+    when :assign
+      name, expr = node[1], node[2]
+      env[name] = eval(expr, env)               # 変数に値を入れ、その値を返す
+    when :if
+      _, cond, then_body, else_body = node
+      if eval(cond, env) != 0                   # 0 でなければ真
+        eval_exprs(then_body, env)
+      else
+        eval_exprs(else_body || [], env)
+      end
+    when :while
+      _, cond, body = node
+      eval_exprs(body, env) while eval(cond, env) != 0
+      nil
+    when :def
+      _, name, params, body = node
+      @functions[name] = [params, body]         # 関数を登録するだけ
+      nil
     when :call then eval_call(node, env)        # 関数呼び出し
     else
       raise "未知のノード: #{node.inspect}"
@@ -433,7 +433,7 @@ class Interpreter
     arg_values = arg_exprs.map { |e| eval(e, env) }   # 引数は呼び出し元の env で評価
     new_env = {}                                       # 関数本体のための新しい環境
     params.each_with_index { |param, i| new_env[param] = arg_values[i] }
-    eval_stmts(body, new_env)                          # 最後の文の値が戻り値
+    eval_exprs(body, new_env)                          # 最後の式の値が戻り値
   end
 end
 ```
