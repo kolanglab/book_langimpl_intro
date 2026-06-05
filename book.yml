@@ -32,7 +32,7 @@ chapters:
     - glossary.md
     - further-reading.md
 
+repository: "https://github.com/kolanglab/book_langimpl_intro"
+
 github_review:
   enabled: true
-
-repository: "https://github.com/kolanglab/book_langimpl_intro"
