@@ -11,10 +11,10 @@
 
 ```mermaid
 graph TD
-    subgraph 並行（交代で進める）
+    subgraph concurrent["並行（交代で進める）"]
         A["タスク1 → タスク2 → タスク1 → ..."]
     end
-    subgraph 並列（同時に進める）
+    subgraph parallel["並列（同時に進める）"]
         B["タスク1（コア1）"]
         C["タスク2（コア2）"]
     end
