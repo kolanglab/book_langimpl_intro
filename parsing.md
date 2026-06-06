@@ -95,6 +95,8 @@ pp result.value
 `Prism.parse` は解析結果（`Prism::ParseResult`）を返し、`result.value` がルートノード（`Prism::ProgramNode`）です。各ノードは「種類」を表す `type`（たとえば `:def_node`＝関数定義、`:call_node`＝メソッド／演算子呼び出し）を持ち、`compact_child_nodes` で子ノードをたどれます。これをたどれば、Ruby が解析した構文木の中身を直接観察できます。
 
 ```ruby
+require "prism"
+
 def show(node, depth = 0)
   puts "#{'  ' * depth}#{node.type}"
   node.compact_child_nodes.each { |c| show(c, depth + 1) }
