@@ -92,7 +92,7 @@ result = Prism.parse(src)
 pp result.value
 ```
 
-`Prism.parse` は解析結果（`Prism::ParseResult`）を返し、`result.value` がルートノード（`Prism::ProgramNode`）です。各ノードは「種類」を表す `type`（たとえば `:def_node`＝関数定義、`:call_node`＝メソッド／演算子呼び出し）を持ち、`compact_child_nodes` で子ノードをたどれます。これをたどれば、Ruby が解析した構文木の中身を直接観察できます。
+`Prism.parse` は解析結果（`Prism::ParseResult`）を返し、`result.value` が**ルートノード**（木全体の頂点にあたるノード。親を持たず、ここから子をたどれば木のすべてに到達できます。Prism では `Prism::ProgramNode` がこれに相当します）です。各ノードは「種類」を表す `type`（たとえば `:def_node`＝関数定義、`:call_node`＝メソッド／演算子呼び出し）を持ち、`compact_child_nodes` で子ノードをたどれます。これをたどれば、Ruby が解析した構文木の中身を直接観察できます。
 
 ```ruby
 def show(node, depth = 0)
