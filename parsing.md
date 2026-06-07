@@ -53,12 +53,12 @@ graph TD
 
 ```mermaid
 graph TD
-    A[":def"] --> B["&quot;add&quot;（名前）"]
-    A --> C["[&quot;a&quot;, &quot;b&quot;]（引数）"]
+    A[":def"] --> B["名前: add"]
+    A --> C["引数: a, b"]
     A --> D["本体（文の並び）"]
     D --> E[":add"]
-    E --> F[":var &quot;a&quot;"]
-    E --> G[":var &quot;b&quot;"]
+    E --> F[":var a"]
+    E --> G[":var b"]
 ```
 
 このようにシンプルな配列にしておくと、次章以降のインタプリタや VM が `node[0]` でノードの種類を見て分岐するだけで処理を書けます。構造体やクラスで表現する流儀もありますが（その方が型安全です）、本書では一目で全体が読める配列表現で進めます。
