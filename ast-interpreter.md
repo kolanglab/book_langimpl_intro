@@ -340,7 +340,7 @@ class Interpreter
 end
 ```
 
-前章のパーサと組み合わせて、実際に走らせてみましょう（`parse_program` は前章の方針で文の並びを解析する関数とします）。
+[構文解析の章](parsing.md)のパーサと組み合わせて、実際に走らせてみましょう（`parse_program` は構文解析の章の方針で文の並びを解析する関数とします）。
 
 ```ruby
 src = <<~MINIRUBY
