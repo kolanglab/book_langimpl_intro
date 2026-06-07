@@ -155,7 +155,7 @@ env["x"] + 1        # x + 1 は 11
     when :mul then eval(node[1], env) * eval(node[2], env)
     when :div then eval(node[1], env) / eval(node[2], env)
 
-    # 比較は、成り立てば 1、成り立たなければ 0 を返す（前章の取り決め）
+    # 比較は、成り立てば 1、成り立たなければ 0 を返す（設計の章の取り決め）
     when :lt then eval(node[1], env) <  eval(node[2], env) ? 1 : 0
     when :gt then eval(node[1], env) >  eval(node[2], env) ? 1 : 0
     when :eq then eval(node[1], env) == eval(node[2], env) ? 1 : 0
@@ -166,7 +166,7 @@ env["x"] + 1        # x + 1 は 11
   end
 ```
 
-比較が三項演算子 `... ? 1 : 0` で整数を返すのは、前章で「真偽は整数で表す（`0` は偽、それ以外は真）」と決めたからです。これで `if` や `while` の条件として使えます。
+比較が三項演算子 `... ? 1 : 0` で整数を返すのは、設計の章「[](language-design.md#値の種類)」で「真偽は整数で表す（`0` は偽、それ以外は真）」と決めたからです。これで `if` や `while` の条件として使えます。
 
 ### 代入と分岐を足す
 
