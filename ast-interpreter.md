@@ -9,15 +9,13 @@
 >
 > ```ruby
 > # 文字列 → Prism の木 → 配列表現の AST
-> program = convert(Prism.parse("print(1 + 2 * 3)").value)
-> # => [[:print, [:add, [:int, 1], [:mul, [:int, 2], [:int, 3]]]]]
+> program = convert(Prism.parse("puts(1 + 2 * 3)").value)
+> # => [[:call, "puts", [[:add, [:int, 1], [:mul, [:int, 2], [:int, 3]]]]]]
 >
-> Interpreter.new.run(program)   # => 7
+> Interpreter.new.run(program)   # => 7 と表示される
 > ```
 >
-> 返ってくるのは、まさにこの章が入力とする配列です（トップレベルは文の並びなので、いちばん外側が配列になります）。手書きパーサ（おまけ節）を使う場合も、たとえば `Parser.new(tokenize("1 + 2 * 3")).parse_comparison` のように呼ぶと**同じ配列表現**が得られます。要するに「文字列を木にする」のは構文解析の担当で、この章は **AST はもう手元にある**前提で、その先の**実行**だけに集中します。
-
-## 基本のアイデア ── 評価とは木をたどること
+> 返ってくるのは、まさにこの章が入力とする配列です（トップレベルは文の並びなので、いちばん外側が配列になります。`[:call, "puts", …]` という形は関数の節で扱います ── この章の序盤では、同じ「画面に出す」を `[:print, 式]` という簡易ノードで代用します）。手書きパーサ（おまけ節）を使う場合も、たとえば `Parser.new(tokenize("1 + 2 * 3")).parse_comparison` のように呼ぶと**同じ配列表現**が得られます。要するに「文字列を木にする」のは構文解析の担当で、この章は **AST はもう手元にある**前提で、その先の**実行**だけに集中します。
 
 ## 基本のアイデア ── 評価とは木をたどること
 
@@ -355,7 +353,7 @@ class Interpreter
 end
 ```
 
-[構文解析の章](parsing.md)のパーサと組み合わせて、実際に走らせてみましょう（`parse_program` は構文解析の章の方針で文の並びを解析する関数とします）。
+[構文解析の章](parsing.md)の Prism ＋ `convert` と組み合わせて、実際に走らせてみましょう。
 
 ```ruby
 src = <<~MINIRUBY
@@ -370,7 +368,7 @@ src = <<~MINIRUBY
   puts fib(10)
 MINIRUBY
 
-ast = parse_program(tokenize(src))
+ast = convert(Prism.parse(src).value)
 Interpreter.new.run(ast)
 # => 55  と表示される
 ```

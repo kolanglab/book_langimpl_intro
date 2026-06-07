@@ -525,7 +525,7 @@ end
 
 ### 動かしてみる
 
-コンパイラと VM をつないで、フィボナッチを動かしましょう。各関数を `Compiler` でコンパイルし、`{code:, nparams:, nlocals:}` の形にまとめて関数表にします（トップレベルの式の並びは `main` という関数にまとめます）。この組み立てを行うのが `compile_program` です。
+コンパイラと VM をつないで、フィボナッチを動かしましょう。各関数を `Compiler` でコンパイルし、`{code:, nparams:, nlocals:}` の形にまとめて関数表にします（トップレベルの式の並びは `main` という関数にまとめます）。この組み立てを行うのが `compile_program` です。ソース `src` は前章でも動かした `fib` のプログラム、`convert` は[構文解析の章](parsing.md)で作った「Prism の木 → 配列表現」の変換関数です。
 
 ```ruby
 def compile_function(params, body)
@@ -546,7 +546,7 @@ def compile_program(program)
   functions
 end
 
-functions = compile_program(parse_program(tokenize(src)))
+functions = compile_program(convert(Prism.parse(src).value))
 result    = VM.new(functions).run        # fib(10) を puts すれば 55
 ```
 

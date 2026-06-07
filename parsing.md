@@ -39,6 +39,7 @@ graph TD
 | 比較 `a < b` | `[:lt, 左, 右]`（`>` は `:gt`、`==` は `:eq`） |
 | 代入 `x = e` | `[:assign, "x", e]` |
 | `if` 文 | `[:if, 条件, [then の文...], [else の文...]]` |
+| `while` 文 | `[:while, 条件, [本体の文...]]` |
 | 関数定義 | `[:def, "名前", [引数名...], [本体の文...]]` |
 | 関数呼び出し | `[:call, "名前", [引数式...]]` |
 
@@ -119,7 +120,7 @@ show(Prism.parse("a + b * 2").value)
 
 実行すると、`call_node`（`+`）の下に `call_node`（`*`）がぶら下がる、優先順位どおりの木が表示されます。「`a + b * 2` が `a + (b * 2)` の木になっている」ことを、自分の目で確かめられるはずです。これが「構文解析で優先順位が構造に吸収される」ということです。
 
-ただし、Prism の AST ノードはそのまま使うには情報が多く、本書独自の `[:add, ...]` 形式とは形が違います。実務でも「既存パーサが返す木を、自分の処理系で扱いやすい形へ**変換（lowering）** する」工程はよくあります。Prism の AST を本書の配列表現へ変換する関数の骨格は、次のようになります。
+ただし、Prism の AST ノードはそのまま使うには情報が多く、本書独自の `[:add, ...]` 形式とは形が違います。実務でも「既存パーサが返す木を、自分の処理系で扱いやすい形へ**変換（lowering）** する」工程はよくあります。Prism の AST を本書の配列表現へ変換する関数 `convert` の全体は、次のようになります。MiniRuby の全ノードをこれひとつで変換でき、後の章の実行例でもこの `convert` をそのまま使います。
 
 ```ruby
 OP = { :+ => :add, :- => :sub, :* => :mul, :/ => :div,
@@ -135,6 +136,8 @@ def convert(node)
     [:int, node.value]
   when :local_variable_read_node  # 代入済みローカル変数の参照
     [:var, node.name.to_s]
+  when :local_variable_write_node # x = e のような代入
+    [:assign, node.name.to_s, convert(node.value)]
   when :call_node
     if node.receiver && OP.key?(node.name)          # a + b のような演算子呼び出し
       right = node.arguments.arguments.first
@@ -145,11 +148,23 @@ def convert(node)
       args = node.arguments&.arguments&.map { |a| convert(a) } || []
       [:call, node.name.to_s, args]
     end
+  when :if_node                   # if 条件 ... else ... end
+    then_body = node.statements ? convert(node.statements) : []
+    else_body = node.subsequent ? convert(node.subsequent) : nil
+    [:if, convert(node.predicate), then_body, else_body]
+  when :else_node                 # if の else 節。中の文の並びへ
+    node.statements ? convert(node.statements) : []
+  when :while_node                # while 条件 ... end
+    body = node.statements ? convert(node.statements) : []
+    [:while, convert(node.predicate), body]
   when :def_node
     params = node.parameters&.requireds&.map { |p| p.name.to_s } || []
     body   = node.body ? convert(node.body) : []
     [:def, node.name.to_s, params, body]
-  # ... :if_node なども同様に変換する ...
+  when :parentheses_node          # ( 式 ) → 中身の式そのもの
+    convert(node.body).first
+  else
+    raise "未対応のノード: #{node.type}"
   end
 end
 ```
@@ -215,7 +230,7 @@ Ruby 側は「Prism で解析して JSON を吐く」だけ、Python 側は「JS
 > [!NOTE]
 > **この節はおまけです。** 授業ではスキップしてかまいません。手書きパーサを読み書きしなくても、以降の章は既存パーサが返す AST を前提に読み進められます。再帰下降法の中身に興味がある人向けの補足としてお楽しみください。
 
-既存パーサは強力ですが、「パーサの中で何が起きているか」を理解するには、一度は自分で書いてみる価値があります。ここでは、文法をほぼそのままコードに写せる **再帰下降構文解析（recursive descent parsing）** で、MiniRuby の式を解析する小さなパーサを作ります。本書の後の章はこの自作パーサが返す AST を使うので、ここで全体像を持っておきましょう。
+既存パーサは強力ですが、「パーサの中で何が起きているか」を理解するには、一度は自分で書いてみる価値があります。ここでは、文法をほぼそのままコードに写せる **再帰下降構文解析（recursive descent parsing）** で、MiniRuby の式を解析する小さなパーサを作ります。返す AST は `convert` と同じ配列表現にそろえます ── 後の章が前提とするのはこの**配列表現の AST** であって、それを既存パーサで作ったか自作パーサで作ったかは問いません。
 
 再帰下降法のアイデアはこうです ── **文法の規則ひとつひとつを、関数ひとつに対応させる**。`add` 規則を解析する関数 `parse_add`、`mul` 規則の `parse_mul`、というように。規則が別の規則を参照していれば、対応する関数を呼び出します。`add` が `mul` を含むなら、`parse_add` は `parse_mul` を呼ぶ ── 文法の構造がそのまま関数の呼び出し構造になります。
 
