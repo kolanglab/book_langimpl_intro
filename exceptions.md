@@ -88,6 +88,8 @@ end
 
 考え方はシンプルです。コンパイラが `begin ... rescue ... end` などの保護区間を認識したとき、その区間の**開始 PC・終了 PC・ハンドラの飛び先 PC** を 1 エントリとして、**例外テーブル**に記録しておきます。フレームはこのテーブルを持ちます。
 
+スタックマシン VM では、例外が起きた時点でスタックに中途半端な値が残っているため、ハンドラへ飛ぶ前にスタックを保護区間の開始時点の深さに巻き戻す必要があります。そのため、エントリには保護区間に入ったときの**スタック深さ（sp）** も記録します。また、`rescue`・`ensure` といったハンドラの種別（**どの大域脱出に対応するか**）も区別できるよう **type** フィールドを持たせます。
+
 たとえば次のようなコードをコンパイルすると、
 
 ```ruby
@@ -102,14 +104,14 @@ end
 
 例外テーブルには次の 1 エントリが生成されます。
 
-| start_pc | end_pc | handler_pc | 意味 |
-|----------|--------|------------|------|
-| 5 | 7 | 7 | PC 5〜6 で例外が起きたら PC 7 のハンドラへ |
+| start_pc | end_pc | handler_pc | sp | type | 意味 |
+|----------|--------|------------|-----|------|------|
+| 5 | 7 | 7 | 0 | :rescue | PC 5〜6 で例外が起きたらスタックを深さ 0 に戻し PC 7 の rescue ハンドラへ |
 
 `start_pc <= 現在PC < end_pc` の範囲に現在の PC が収まっているかをチェックすることで、保護区間にいるかどうかを O(n)（エントリ数）で判定できます。
 
 ```ruby
-ExceptionEntry = Struct.new(:start_pc, :end_pc, :handler_pc)
+ExceptionEntry = Struct.new(:start_pc, :end_pc, :handler_pc, :sp, :type)
 
 class Frame
   attr_accessor :pc
@@ -139,9 +141,10 @@ class VM
     while (frame = @frames.last)
       entry = frame.find_handler
       if entry
-        frame.pc = entry.handler_pc   # ハンドラへ飛ぶ
-        frame.stack.push(value)       # 例外値をスタックに積む
-        return                        # 通常実行に戻る
+        frame.pc = entry.handler_pc              # ハンドラへ飛ぶ
+        frame.stack = frame.stack[0, entry.sp]   # 中途半端な値を巻き戻す
+        frame.stack.push(value)                  # 例外値をスタックに積む
+        return                                   # 通常実行に戻る
       end
       @frames.pop                     # ハンドラがなければフレームを捨てる
     end
