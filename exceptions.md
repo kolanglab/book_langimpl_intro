@@ -122,8 +122,8 @@ class Frame
     @stack = []
   end
 
-  def find_handler
-    @exception_table.find { |e| e.start_pc <= @pc && @pc < e.end_pc }
+  def find_handler(type)
+    @exception_table.find { |e| e.start_pc <= @pc && @pc < e.end_pc && e.type == type }
   end
 end
 ```
@@ -139,7 +139,7 @@ end
 class VM
   def raise_exception(value)
     while (frame = @frames.last)
-      entry = frame.find_handler
+      entry = frame.find_handler(:rescue)
       if entry
         frame.pc = entry.handler_pc              # ハンドラへ飛ぶ
         frame.stack = frame.stack[0, entry.sp]   # 中途半端な値を巻き戻す
