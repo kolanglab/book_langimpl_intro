@@ -47,11 +47,16 @@ class Interpreter
   # 式 node を評価し、値（整数）を返す
   def eval(node)
     case node[0]
-    when :int then node[1]                  # [:int, 3] → 3
-    when :add then eval(node[1]) + eval(node[2])
-    when :sub then eval(node[1]) - eval(node[2])
-    when :mul then eval(node[1]) * eval(node[2])
-    when :div then eval(node[1]) / eval(node[2])
+    when :int
+      node[1]                               # [:int, 3] → 3
+    when :add
+      eval(node[1]) + eval(node[2])
+    when :sub
+      eval(node[1]) - eval(node[2])
+    when :mul
+      eval(node[1]) * eval(node[2])
+    when :div
+      eval(node[1]) / eval(node[2])
     else
       raise "未知のノード: #{node.inspect}"
     end
@@ -70,12 +75,18 @@ class Interpreter
   # 式 node を評価し、値（整数）を返す
   def eval(node)
     case node[0]
-    when :int then node[1]
-    when :add then eval(node[1]) + eval(node[2])
-    when :sub then eval(node[1]) - eval(node[2])
-    when :mul then eval(node[1]) * eval(node[2])
-    when :div then eval(node[1]) / eval(node[2])
-    when :print then puts eval(node[1])     # 式を評価して画面に出す
+    when :int
+      node[1]
+    when :add
+      eval(node[1]) + eval(node[2])
+    when :sub
+      eval(node[1]) - eval(node[2])
+    when :mul
+      eval(node[1]) * eval(node[2])
+    when :div
+      eval(node[1]) / eval(node[2])
+    when :print
+      puts eval(node[1])                    # 式を評価して画面に出す
     else
       raise "未知のノード: #{node.inspect}"
     end
@@ -198,7 +209,8 @@ env["x"] + 1        # x + 1 は 11
       _, cond, body = node
       eval_exprs(body, env) while eval(cond, env) != 0
       nil
-    when :print then puts eval(node[1], env)  # （関数の節で puts に置き換える）
+    when :print
+      puts eval(node[1], env)                 # （関数の節で puts に置き換える）
     end
   end
 ```
@@ -265,7 +277,8 @@ end
 
 ```ruby
   # eval の case に 1 本追加：
-  #   when :call then eval_call(node, env)
+  #   when :call
+  #     eval_call(node, env)
 ```
 
 その実体が `eval_call` です。
@@ -392,18 +405,26 @@ class Interpreter
   # 式 node を環境 env のもとで評価し、値を返す
   def eval(node, env)
     case node[0]
-    when :int then node[1]                      # [:int, 3] → 3
+    when :int
+      node[1]                                   # [:int, 3] → 3
     when :var
       name = node[1]
       raise "未定義の変数: #{name}" unless env.key?(name)
       env[name]                                 # 環境から値を取り出す
-    when :add then eval(node[1], env) + eval(node[2], env)
-    when :sub then eval(node[1], env) - eval(node[2], env)
-    when :mul then eval(node[1], env) * eval(node[2], env)
-    when :div then eval(node[1], env) / eval(node[2], env)
-    when :lt then eval(node[1], env) <  eval(node[2], env) ? 1 : 0
-    when :gt then eval(node[1], env) >  eval(node[2], env) ? 1 : 0
-    when :eq then eval(node[1], env) == eval(node[2], env) ? 1 : 0
+    when :add
+      eval(node[1], env) + eval(node[2], env)
+    when :sub
+      eval(node[1], env) - eval(node[2], env)
+    when :mul
+      eval(node[1], env) * eval(node[2], env)
+    when :div
+      eval(node[1], env) / eval(node[2], env)
+    when :lt
+      eval(node[1], env) <  eval(node[2], env) ? 1 : 0
+    when :gt
+      eval(node[1], env) >  eval(node[2], env) ? 1 : 0
+    when :eq
+      eval(node[1], env) == eval(node[2], env) ? 1 : 0
     when :assign
       name, expr = node[1], node[2]
       env[name] = eval(expr, env)               # 変数に値を入れ、その値を返す
@@ -422,7 +443,8 @@ class Interpreter
       _, name, params, body = node
       @functions[name] = [params, body]         # 関数を登録するだけ
       nil
-    when :call then eval_call(node, env)        # 関数呼び出し
+    when :call
+      eval_call(node, env)                      # 関数呼び出し
     else
       raise "未知のノード: #{node.inspect}"
     end
