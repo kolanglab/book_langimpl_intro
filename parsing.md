@@ -83,7 +83,7 @@ graph TD
 > [!NOTE]
 > パーサを**自分で生成・記述する**道 ── パーサジェネレータ（yacc/bison、ANTLR、Racc）、PEG（Parslet、Treetop）、パーサコンビネータなど ── もありますが、これらは文法を自分で書き起こす「パーサの自作」に分類されます。手書きの再帰下降法は次節で、解析手法そのものの体系は後述の姉妹編で扱います。
 
-MiniRuby は **Ruby の部分集合**として設計したので、この「既存パーサの再利用」が特に強力です。なんと、**Ruby 自身のパーサにそのまま食わせて AST を取り出せる**のです。これを使えば、字句解析も構文解析も自分で書かずに済みます。
+MiniRuby は**構文の上では Ruby の部分集合**として設計したので、この「既存パーサの再利用」が特に強力です。なんと、**Ruby 自身のパーサにそのまま食わせて AST を取り出せる**のです。これを使えば、字句解析も構文解析も自分で書かずに済みます。
 
 > [!TIP]
 > 構文解析それ自体を深く学びたい人は、姉妹編『[構文解析入門](https://kolanglab.github.io/book_parser_intro)』を参照してください。LR・LL・PEG といった解析手法や、パーサジェネレータの使い方を体系的に扱っています。本書では「AST を手に入れてからが本番」という立場で、構文解析は手早く済ませます。
@@ -320,7 +320,12 @@ class Parser
     tok = advance
     case tok[0]
     when :int   then [:int, tok[1]]
-    when :ident then [:var, tok[1]]   # 関数呼び出しの判定は後述
+    when :ident
+      if peek == [:op, "("]           # IDENT の直後が ( なら関数呼び出し
+        parse_call(tok[1])
+      else
+        [:var, tok[1]]                # そうでなければ変数参照
+      end
     when :op
       raise "( を期待" unless tok[1] == "("
       node = parse_comparison
@@ -329,6 +334,21 @@ class Parser
     else
       raise "予期しないトークン: #{tok.inspect}"
     end
+  end
+
+  # call ::= IDENT "(" args ")"   ── 関数名 name は読み終えた状態で呼ばれる
+  def parse_call(name)
+    advance                           # "(" を読む
+    args = []
+    unless peek == [:op, ")"]
+      args << parse_comparison
+      while peek == [:op, ","]
+        advance                       # "," を読む
+        args << parse_comparison
+      end
+    end
+    raise ") を期待" unless advance == [:op, ")"]
+    [:call, name, args]
   end
 end
 ```
@@ -344,6 +364,9 @@ end
 ast = Parser.new(tokenize("1 + 2 * 3")).parse_comparison
 pp ast
 # => [:add, [:int, 1], [:mul, [:int, 2], [:int, 3]]]
+
+pp Parser.new(tokenize("add(1, 2 * 3)")).parse_comparison
+# => [:call, "add", [[:int, 1], [:mul, [:int, 2], [:int, 3]]]]
 ```
 
 `2 * 3` が内側にまとまり、`+` が外側に来る ── 優先順位どおりの木が得られました。これで文字列が木になりました。

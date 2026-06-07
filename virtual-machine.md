@@ -523,6 +523,9 @@ class VM
       return value                            # 出力した値をそのまま返す
     end
     func = @functions[name] or raise "未定義の関数: #{name}"
+    if argc != func[:nparams]
+      raise "引数の個数が違います: #{name}"
+    end
     args = @stack.pop(argc)                   # 引数をまとめて取り出す
     locals = Array.new(func[:nlocals], 0)     # ローカルを 0 で初期化
     args.each_with_index { |v, i| locals[i] = v }  # 先頭に引数を置く
@@ -546,6 +549,8 @@ end
 2. **ローカル変数の箱を用意する**：`Array.new(func[:nlocals], 0)` で、呼ばれる関数が使うローカル変数の本数ぶんの配列を作り、ぜんぶ `0` で初期化します。
 3. **引数をローカルの先頭に置く**：取り出した引数を `locals[0], locals[1], ...` と並べます。「引数とは、ローカル変数のうち最初の数個である」という約束です。だから関数本体は、引数もふつうのローカル変数（`get_local 0` など）として読めます。
 4. **フレームを作って積む**：`func`（命令列）・`pc = 0`（先頭から）・`locals`（いま作った箱）を 1 つの `Frame` にまとめ、`@frames` に積みます。
+
+その手前の `argc != func[:nparams]` の検査にも目を留めてください。関数表に入れておいた `nparams` は、この**引数の個数チェック**のためにあります ── 前章の `eval_call` がやっていたのと同じ検査です。
 
 なお、冒頭で `puts` を**組み込み関数**として特別扱いしているのは、前章のインタプリタの `eval_call` と同じ構図です。前章と同じく `puts` は出力した値をそのまま返し、`do_call` の戻り値が `run` の `call` 処理で値スタックに積まれるので、`puts(式)` も「値が 1 つ残る式」になります。四則演算の節の専用命令 `print` はここで役目を終え、これからは `[:call, "puts", 1]` という `call` 命令で画面に出します。
 
@@ -783,6 +788,9 @@ class VM
       return value                             # 出力した値をそのまま返す
     end
     func = @functions[name] or raise "未定義の関数: #{name}"
+    if argc != func[:nparams]
+      raise "引数の個数が違います: #{name}"
+    end
     args = @stack.pop(argc)
     locals = Array.new(func[:nlocals], 0)
     args.each_with_index { |v, i| locals[i] = v }
