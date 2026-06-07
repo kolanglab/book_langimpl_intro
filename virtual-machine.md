@@ -518,6 +518,7 @@ end
 class VM
   def do_call(name, argc)
     if name == "puts"                         # 組み込み関数
+      raise "引数の個数が違います: puts" if argc != 1
       value = @stack.pop
       puts value
       return value                            # 出力した値をそのまま返す
@@ -783,6 +784,7 @@ class VM
 
   def do_call(name, argc)
     if name == "puts"                          # 組み込み関数
+      raise "引数の個数が違います: puts" if argc != 1
       value = @stack.pop
       puts value
       return value                             # 出力した値をそのまま返す

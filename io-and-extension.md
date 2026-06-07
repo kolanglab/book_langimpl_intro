@@ -53,7 +53,8 @@ class VM
 
   def do_call(name, argc)
     if (entry = @builtins[name])
-      _, body = entry
+      expected, body = entry
+      raise "引数の個数が違います: #{name}" if argc != expected
       args = @stack.pop(argc)
       return body.call(*args)        # ホスト言語の手続きを呼ぶ
     end

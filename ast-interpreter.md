@@ -303,6 +303,7 @@ class Interpreter
 
     # まず組み込み関数 puts を特別扱い
     if name == "puts"
+      raise "引数の個数が違います: puts" if arg_exprs.size != 1
       value = eval(arg_exprs[0], env)
       puts value
       return value
@@ -467,6 +468,7 @@ class Interpreter
     _, name, arg_exprs = node
 
     if name == "puts"                           # 組み込み関数
+      raise "引数の個数が違います: puts" if arg_exprs.size != 1
       value = eval(arg_exprs[0], env)
       puts value
       return value
