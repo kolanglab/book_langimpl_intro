@@ -587,7 +587,7 @@ end
 
 ### 動かしてみる
 
-コンパイラと VM をつないで、フィボナッチを動かしましょう。各関数を `Compiler` でコンパイルし、`{code:, nparams:, nlocals:}` の形にまとめて関数表にします（トップレベルの式の並びは `main` という関数にまとめます）。この組み立てを行うのが `compile_program` です。ソース `src` は前章でも動かした `fib` のプログラム、`convert` は[構文解析の章](parsing.md)で作った「Prism の木 → 配列表現」の変換関数です。
+コンパイラと VM をつないで、フィボナッチを動かしましょう。各関数を `Compiler` でコンパイルし、`{code:, nparams:, nlocals:}` の形にまとめて関数表にします（トップレベルの式の並びは `main` という関数にまとめます）。`c.nlocals` は `Compiler` が持つ補助メソッドで、`@locals.size`——コンパイル中に登録したローカル変数の総数——を返します。この組み立てを行うのが `compile_program` です。ソース `src` は前章でも動かした `fib` のプログラム、`convert` は[構文解析の章](parsing.md)で作った「Prism の木 → 配列表現」の変換関数です。
 
 ```ruby
 def compile_function(params, body)
