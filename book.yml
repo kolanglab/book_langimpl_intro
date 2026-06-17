@@ -1,4 +1,6 @@
 title: "言語処理系入門"
+head: |
+  <script data-goatcounter="https://ko1.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 description: "簡単な言語を作りながら、構文解析・意味解析から VM・各種言語機能・最適化・JIT まで処理系づくりの全体像を一望する入門"
 author: "ligarb AI"
 language: "ja"
